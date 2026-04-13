@@ -44,8 +44,8 @@ async def route_interactive(sender: str, interactive: dict):
                 await checkout_handlers.handle_order_confirmation(sender)
             elif button_id == "change_address":
                 from app import session_manager
-                await session_manager.set_state(sender, "AWAITING_ADDRESS")
-                await whatsapp_client.send_text(sender, "📍 Please type your new full delivery address below:")
+                await session_manager.set_state(sender, "AWAITING_ADDRESS_GPS")
+                await whatsapp_client.send_location_request(sender, "📍 Please share your precise GPS delivery location via the button below:")
             else:
                 await handle_button_reply(sender, button_id)
 

@@ -75,6 +75,21 @@ async def process_webhook(payload: dict):
                             
                             from app.handlers import product_handlers
                             await product_handlers.route_interactive(sender, interactive_payload)
+                            
+                    elif msg_type == "location":
+                        loc = msg.get("location", {})
+                        if sender and loc:
+                            lat = loc.get("latitude")
+                            lng = loc.get("longitude")
+                            logger.info(f"From: {mask_phone(sender)} | Type: location | Content: {lat},{lng}")
+                            
+                            from app import session_manager
+                            from app.handlers import checkout_handlers
+                            state = await session_manager.get_state(sender)
+                            if state and state.get("state") == "AWAITING_ADDRESS_GPS":
+                                await checkout_handlers.handle_gps_location(sender, lat, lng)
+                            else:
+                                await whatsapp_client.send_text(sender, "📍 We received your location, but we didn't explicitly request one! Use the menu to browse products.")
     except Exception as e:
         logger.error(f"Error traversing webhook payload: {e}")
 
@@ -103,8 +118,11 @@ async def route_message(sender: str, text: str):
         if s_type == "AWAITING_QUANTITY":
             await cart_handlers.handle_quantity_input(sender, text, metadata)
             return
-        elif s_type == "AWAITING_ADDRESS":
-            await checkout_handlers.handle_address_input(sender, text)
+        elif s_type == "AWAITING_ADDRESS_GPS":
+            await whatsapp_client.send_text(sender, "⚠️ Please use the 'Send Location' button supplied in the previous message to share your GPS coordinates.")
+            return
+        elif s_type == "AWAITING_ADDRESS_DETAILS":
+            await checkout_handlers.handle_address_details_input(sender, text, metadata)
             return
     
     # 1. Active Routing

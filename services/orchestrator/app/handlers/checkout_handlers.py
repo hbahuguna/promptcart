@@ -28,21 +28,32 @@ async def initiate_checkout(sender: str):
         await whatsapp_client.send_interactive_buttons(sender, "Checkout", body, buttons)
     else:
         # State machine interception required!
-        await session_manager.set_state(sender, "AWAITING_ADDRESS")
-        await whatsapp_client.send_text(sender, "📍 We need your delivery address!\nPlease type your full address below to continue.")
+        await session_manager.set_state(sender, "AWAITING_ADDRESS_GPS")
+        await whatsapp_client.send_location_request(sender, "📍 We need your delivery address!\nPlease share your precise GPS location below:")
 
-async def handle_address_input(sender: str, text: str):
+async def handle_gps_location(sender: str, lat: float, lng: float):
     """
-    Captures intercepted text, saves the profile, and executes checkout verification UI.
+    Receives physical coordinate structure, saving into temporal state.
     """
-    if len(text) < 10:
-        await whatsapp_client.send_text(sender, "Address seems too short. Please provide a detailed delivery address.")
+    await session_manager.set_state(sender, "AWAITING_ADDRESS_DETAILS", {"lat": lat, "lng": lng})
+    await whatsapp_client.send_text(sender, "✅ Location saved!\nNow, please reply with your *House/Flat No. and Landmark* (e.g. 'Flat 4B, Sector 5').")
+
+async def handle_address_details_input(sender: str, text: str, metadata: dict):
+    """
+    Captures text appending it into the active geographical anchor, creating a formatted structure.
+    """
+    if len(text) < 3:
+        await whatsapp_client.send_text(sender, "Please provide a valid House/Flat No. and Landmark details.")
         return
         
-    await customer_client.save_address(sender, text)
+    lat = metadata.get("lat")
+    lng = metadata.get("lng")
+    structured_address = f"{text} (GPS: {lat}, {lng})"
+    
+    await customer_client.save_address(sender, structured_address)
     await session_manager.clear_state(sender)
     
-    await whatsapp_client.send_text(sender, "✅ Address saved successfully!")
+    await whatsapp_client.send_text(sender, "✅ Structured Address saved successfully!")
     await initiate_checkout(sender)
 
 async def handle_order_confirmation(sender: str):
