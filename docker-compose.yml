@@ -1,0 +1,122 @@
+version: "3.8"
+
+services:
+  # ==========================================
+  # Microservice 1: WhatsApp Gateway
+  # ==========================================
+  whatsapp-redis:
+    image: redis:7-alpine
+    container_name: promptcart-whatsapp-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  whatsapp-gateway:
+    build:
+      context: ./services/whatsapp-gateway
+      dockerfile: Dockerfile
+    container_name: promptcart-whatsapp-gateway
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./services/whatsapp-gateway/.env
+    environment:
+      REDIS_URL: redis://whatsapp-redis:6379
+    depends_on:
+      whatsapp-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # Microservice 2: Vendor Management
+  # ==========================================
+  vendor-db:
+    image: postgres:15-alpine
+    container_name: promptcart-vendor-db
+    environment:
+      POSTGRES_DB: vendor_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vendor_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  vendor-api:
+    build:
+      context: ./services/vendor-management
+      dockerfile: Dockerfile
+    container_name: promptcart-vendor-api
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./services/vendor-management/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@vendor-db:5432/vendor_db
+    depends_on:
+      vendor-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # Microservice 3: Catalog Service
+  # ==========================================
+  catalog-db:
+    image: postgres:15-alpine
+    container_name: promptcart-catalog-db
+    environment:
+      POSTGRES_DB: catalogdb
+      POSTGRES_USER: catalog_user
+      POSTGRES_PASSWORD: catalog_pass
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog_user -d catalogdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  catalog-api:
+    build:
+      context: ./services/catalog
+      dockerfile: Dockerfile
+    container_name: promptcart-catalog-api
+    ports:
+      - "8002:8002"
+    env_file:
+      - ./services/catalog/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://catalog_user:catalog_pass@catalog-db:5432/catalogdb
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # Microservice 4: Conversation Orchestrator
+  # ==========================================
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    container_name: promptcart-orchestrator
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./services/orchestrator/.env
+    environment:
+      REDIS_URL: redis://whatsapp-redis:6379
+      CATALOG_SERVICE_URL: http://catalog-api:8002
+    depends_on:
+      whatsapp-redis:
+        condition: service_healthy
+      catalog-api:
+        condition: service_started
+    restart: unless-stopped
