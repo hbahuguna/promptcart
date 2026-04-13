@@ -10,7 +10,7 @@ from app.database import get_db
 router = APIRouter(prefix="/api/v1/vendors", tags=["Vendors"])
 
 
-@router.post("/", response_model=schemas.VendorResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.VendorResponse, status_code=status.HTTP_201_CREATED)
 async def create_vendor(
     vendor: schemas.VendorCreate,
     db: AsyncSession = Depends(get_db),
@@ -31,7 +31,7 @@ async def create_vendor(
     return db_vendor
 
 
-@router.get("/", response_model=List[schemas.VendorResponse])
+@router.get("", response_model=List[schemas.VendorResponse])
 async def list_vendors(
     type: Optional[models.VendorTypeEnum] = Query(None, description="Filter by DARK_STORE or SHOPKEEPER"),
     db: AsyncSession = Depends(get_db),
