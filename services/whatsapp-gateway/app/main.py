@@ -48,35 +48,6 @@ async def get_redis() -> aioredis.Redis:
 # Routes
 # ---------------------------------------------------------------------------
 
-
-async def send_whatsapp_message(to: str, text: str) -> None:
-    """Sends a text message back to the user via the Meta WhatsApp system."""
-    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
-        logger.warning("WhatsApp credentials missing. Skipping echo send.")
-        return
-
-    url = f"https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "text",
-        "text": {"body": text},
-    }
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            logger.info("Successfully sent WhatsApp message to %s", to)
-    except Exception as e:
-        logger.error("Failed to send WhatsApp message to %s: %s", to, e)
-
-
-
 @app.get(
     "/webhook",
     summary="WhatsApp hub challenge verification",
@@ -143,26 +114,7 @@ async def receive_message(request: Request) -> dict:
     preview_output = payload_str[:200].replace('\n', '')
     logger.info("Published to channel raw_whatsapp_messages. Preview: %s", preview_output)
 
-    # Defensively parse the payload to extract the message text and sender
-    try:
-        entries = payload_data.get("entry", [])
-        if entries:
-            changes = entries[0].get("changes", [])
-            if changes:
-                value = changes[0].get("value", {})
-                messages = value.get("messages", [])
-                if messages:
-                    msg = messages[0]
-                    sender_phone = msg.get("from")
-                    text_body = msg.get("text", {}).get("body")
-
-                    if sender_phone and text_body:
-                        # Echo the message back to the sender safely in the background, or inline but not blocking the 200 OK
-                        await send_whatsapp_message(sender_phone, f"Echo: {text_body}")
-    except Exception as e:
-        # Never crash the webhook processing if extraction/echo logic fails
-        logger.error("Error occurred while attempting to echo message: %s", e)
-
+    # Gateway acts strictly as a message bus. Business logic/echo is disabled here.
     return {"status": "received"}
 
 

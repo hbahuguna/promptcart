@@ -90,5 +90,6 @@ async def route_message(sender: str, text: str):
         products = await catalog_client.fetch_menu(vendor_id=VENDOR_ID)
         await whatsapp_client.send_interactive_list(sender, products)
     else:
-        logger.info("Intent: BASIC_ECHO (confidence: 1.0)")
-        await whatsapp_client.send_text(sender, f"You said: {text}")
+        logger.info("Intent: UNKNOWN (confidence: 1.0)")
+        # Acknowledge gracefully instead of echoing raw text
+        await whatsapp_client.send_text(sender, "I'm sorry, I don't understand that command. Type 'menu' or 'catalog' to browse our store!")
