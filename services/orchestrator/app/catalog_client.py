@@ -1,8 +1,8 @@
 import os
 import httpx
-import logging
+from app.logger_utils import setup_logger
 
-logger = logging.getLogger("orchestrator_catalog")
+logger = setup_logger("orchestrator_catalog")
 
 CATALOG_URL = os.environ.get("CATALOG_SERVICE_URL", "http://localhost:8002")
 
@@ -20,6 +20,7 @@ async def fetch_menu(vendor_id: str) -> list:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
+            logger.info(f"GET {url} - Status {response.status_code}")
             return response.json()
     except Exception as e:
         logger.error(f"Failed to fetch menu for vendor {vendor_id}: {e}")
@@ -35,6 +36,7 @@ async def get_product_by_id(product_id: str) -> dict:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             response.raise_for_status()
+            logger.info(f"GET {url} - Status {response.status_code}")
             return response.json()
     except httpx.HTTPStatusError as e:
         logger.error(f"Catalog Product Lookup HTTP Error: {e.response.status_code}")

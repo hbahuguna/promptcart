@@ -6,6 +6,7 @@ import httpx
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from app.logger_utils import setup_logger, mask_phone
 
 load_dotenv()
 
@@ -30,8 +31,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-logger = logging.getLogger("whatsapp_gateway")
-logging.basicConfig(level=logging.INFO)
+logger = setup_logger("whatsapp_gateway")
 
 _redis: aioredis.Redis | None = None
 
@@ -119,13 +119,29 @@ async def receive_message(request: Request) -> dict:
     try:
         # Validate it's parseable JSON (WhatsApp always sends JSON)
         payload_data = json.loads(payload_str)
+        
+        # Deepcopy payload internally to protect logs from mutating our main processing line
+        import copy
+        debug_payload = copy.deepcopy(payload_data)
+        
+        # Strip all sender string values through mask_phone to maintain total network privacy
+        for entry in debug_payload.get("entry", []):
+            for change in entry.get("changes", []):
+                for msg in change.get("value", {}).get("messages", []):
+                    if "from" in msg:
+                        msg["from"] = mask_phone(msg["from"])
+        
+        logger.debug(f"Incoming webhook payload: {json.dumps(debug_payload)}")
+        
     except json.JSONDecodeError:
         logger.error("Received non-JSON payload, rejecting.")
         raise HTTPException(status_code=400, detail="Payload must be valid JSON")
 
     redis = await get_redis()
     await redis.publish(REDIS_CHANNEL, payload_str)
-    logger.info("Published message to Redis channel '%s'", REDIS_CHANNEL)
+    
+    preview_output = payload_str[:200].replace('\n', '')
+    logger.info("Published to channel raw_whatsapp_messages. Preview: %s", preview_output)
 
     # Defensively parse the payload to extract the message text and sender
     try:

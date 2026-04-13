@@ -1,8 +1,8 @@
 import os
 import httpx
-import logging
+from app.logger_utils import setup_logger
 
-logger = logging.getLogger("orchestrator_whatsapp")
+logger = setup_logger("orchestrator_whatsapp")
 
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
@@ -120,15 +120,18 @@ async def send_interactive_buttons(to: str, header: str, body: str, buttons: lis
 
 async def _post_to_whatsapp(payload: dict) -> bool:
     """Internal helper to dispatch to Meta API."""
+    logger.debug(f"Outbound WhatsApp payload: {payload}")
+    
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         logger.warning("WhatsApp credentials missing. Skipping Meta API call.")
         return False
         
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(get_base_url(), json=payload, headers=get_headers())
+            url = get_base_url()
+            resp = await client.post(url, json=payload, headers=get_headers())
             resp.raise_for_status()
-            logger.info(f"WhatsApp message sent to {payload.get('to')}")
+            logger.info(f"POST {url} - Status {resp.status_code} sent to {payload.get('to')}")
             return True
             
     except httpx.HTTPStatusError as e:

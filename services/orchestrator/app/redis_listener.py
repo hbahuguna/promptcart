@@ -4,8 +4,9 @@ import asyncio
 import logging
 from redis import asyncio as aioredis
 from app import whatsapp_client, catalog_client
+from app.logger_utils import setup_logger, mask_phone
 
-logger = logging.getLogger("orchestrator_redis")
+logger = setup_logger("orchestrator_redis")
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 VENDOR_ID = os.environ.get("VENDOR_ID", "bab94c54-8035-4dbd-8b9e-252e0b08d304")
@@ -57,13 +58,20 @@ async def process_webhook(payload: dict):
                 
                 for msg in messages:
                     sender = msg.get("from")
-                    if msg.get("type") == "text":
+                    msg_type = msg.get("type", "unknown")
+                    
+                    if msg_type == "text":
                         text = msg.get("text", {}).get("body", "").strip()
                         if sender and text:
+                            logger.info(f"From: {mask_phone(sender)} | Type: text | Content: {text[:50]}")
                             await route_message(sender, text)
-                    elif msg.get("type") == "interactive":
+                    elif msg_type == "interactive":
                         interactive_payload = msg.get("interactive", {})
                         if sender and interactive_payload:
+                            i_type = interactive_payload.get("type")
+                            i_id = interactive_payload.get(i_type, {}).get("id", "none")
+                            logger.info(f"From: {mask_phone(sender)} | Type: interactive_{i_type} | Content: {i_id}")
+                            
                             from app.handlers import product_handlers
                             await product_handlers.route_interactive(sender, interactive_payload)
     except Exception as e:
@@ -77,10 +85,10 @@ async def route_message(sender: str, text: str):
     wants_catalog = any(word in text_lower for word in KEYWORDS)
     
     if wants_catalog:
-        logger.info(f"Detected CATALOG intent from {sender}")
+        logger.info("Intent: CATALOG (confidence: 1.0)")
         # Fetch up to 10 products due to Meta API constraints
         products = await catalog_client.fetch_menu(vendor_id=VENDOR_ID)
         await whatsapp_client.send_interactive_list(sender, products)
     else:
-        logger.info(f"Detected BASIC intent from {sender}. Echoing fallback.")
+        logger.info("Intent: BASIC_ECHO (confidence: 1.0)")
         await whatsapp_client.send_text(sender, f"You said: {text}")
