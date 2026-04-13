@@ -2,6 +2,7 @@ import json
 import logging
 import os
 
+import httpx
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -14,6 +15,8 @@ load_dotenv()
 VERIFY_TOKEN: str = os.getenv("VERIFY_TOKEN", "")
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 REDIS_CHANNEL: str = "raw_whatsapp_messages"
+WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
+PHONE_NUMBER_ID: str = os.getenv("PHONE_NUMBER_ID", "")
 
 # ---------------------------------------------------------------------------
 # App + Redis
@@ -44,6 +47,34 @@ async def get_redis() -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+async def send_whatsapp_message(to: str, text: str) -> None:
+    """Sends a text message back to the user via the Meta WhatsApp system."""
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        logger.warning("WhatsApp credentials missing. Skipping echo send.")
+        return
+
+    url = f"https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": text},
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            logger.info("Successfully sent WhatsApp message to %s", to)
+    except Exception as e:
+        logger.error("Failed to send WhatsApp message to %s: %s", to, e)
+
 
 
 @app.get(
@@ -87,15 +118,35 @@ async def receive_message(request: Request) -> dict:
 
     try:
         # Validate it's parseable JSON (WhatsApp always sends JSON)
-        json.loads(payload_str)
+        payload_data = json.loads(payload_str)
     except json.JSONDecodeError:
         logger.error("Received non-JSON payload, rejecting.")
         raise HTTPException(status_code=400, detail="Payload must be valid JSON")
 
     redis = await get_redis()
     await redis.publish(REDIS_CHANNEL, payload_str)
-
     logger.info("Published message to Redis channel '%s'", REDIS_CHANNEL)
+
+    # Defensively parse the payload to extract the message text and sender
+    try:
+        entries = payload_data.get("entry", [])
+        if entries:
+            changes = entries[0].get("changes", [])
+            if changes:
+                value = changes[0].get("value", {})
+                messages = value.get("messages", [])
+                if messages:
+                    msg = messages[0]
+                    sender_phone = msg.get("from")
+                    text_body = msg.get("text", {}).get("body")
+
+                    if sender_phone and text_body:
+                        # Echo the message back to the sender safely in the background, or inline but not blocking the 200 OK
+                        await send_whatsapp_message(sender_phone, f"Echo: {text_body}")
+    except Exception as e:
+        # Never crash the webhook processing if extraction/echo logic fails
+        logger.error("Error occurred while attempting to echo message: %s", e)
+
     return {"status": "received"}
 
 
