@@ -35,25 +35,44 @@ async def handle_gps_location(sender: str, lat: float, lng: float):
     """
     Receives physical coordinate structure, saving into temporal state.
     """
-    await session_manager.set_state(sender, "AWAITING_ADDRESS_DETAILS", {"lat": lat, "lng": lng})
-    await whatsapp_client.send_text(sender, "✅ Location saved!\nNow, please reply with your *House/Flat No. and Landmark* (e.g. 'Flat 4B, Sector 5').")
+    await session_manager.set_state(sender, "AWAITING_CUSTOMER_NAME", {"lat": lat, "lng": lng})
+    await whatsapp_client.send_text(sender, "✅ Location saved!\n\nLet's get a few more details.\nFirst, *please reply with your Full Name*:")
 
-async def handle_address_details_input(sender: str, text: str, metadata: dict):
-    """
-    Captures text appending it into the active geographical anchor, creating a formatted structure.
-    """
-    if len(text) < 3:
-        await whatsapp_client.send_text(sender, "Please provide a valid House/Flat No. and Landmark details.")
+async def handle_wizard_name_input(sender: str, text: str, metadata: dict):
+    if len(text) < 2:
+        await whatsapp_client.send_text(sender, "Please enter a valid name.")
         return
-        
+    metadata["name"] = text.strip()
+    await session_manager.set_state(sender, "AWAITING_HOUSE_NUMBER", metadata)
+    await whatsapp_client.send_text(sender, "Thanks! Now, *please reply with your House Name or Number*:")
+
+async def handle_wizard_house_input(sender: str, text: str, metadata: dict):
+    metadata["house"] = text.strip()
+    await session_manager.set_state(sender, "AWAITING_MOHALLA", metadata)
+    await whatsapp_client.send_text(sender, "Got it! Next, *what is your Mohalla/Locality/Street?*")
+
+async def handle_wizard_mohalla_input(sender: str, text: str, metadata: dict):
+    metadata["mohalla"] = text.strip()
+    await session_manager.set_state(sender, "AWAITING_LANDMARK", metadata)
+    await whatsapp_client.send_text(sender, "Almost done! *Finally, please reply with a nearby Landmark*:")
+
+async def handle_wizard_landmark_input(sender: str, text: str, metadata: dict):
+    """
+    Final step: Captures landmark and structures the complete payload.
+    """
     lat = metadata.get("lat")
     lng = metadata.get("lng")
-    structured_address = f"{text} (GPS: {lat}, {lng})"
+    name = metadata.get("name")
+    house = metadata.get("house")
+    mohalla = metadata.get("mohalla")
+    landmark = text.strip()
+    
+    structured_address = f"Name: {name}\nHouse: {house}\nMohalla: {mohalla}\nLandmark: {landmark}\n*(GPS: {lat}, {lng})*"
     
     await customer_client.save_address(sender, structured_address)
     await session_manager.clear_state(sender)
     
-    await whatsapp_client.send_text(sender, "✅ Structured Address saved successfully!")
+    await whatsapp_client.send_text(sender, f"✅ Structured Address saved successfully:\n\n{structured_address}")
     await initiate_checkout(sender)
 
 async def handle_order_confirmation(sender: str):

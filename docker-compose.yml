@@ -9,6 +9,8 @@ services:
     container_name: promptcart-whatsapp-redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -43,6 +45,8 @@ services:
       POSTGRES_PASSWORD: postgrespassword
     ports:
       - "5432:5432"
+    volumes:
+      - vendor_db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d vendor_db"]
       interval: 5s
@@ -77,6 +81,8 @@ services:
       POSTGRES_PASSWORD: catalog_pass
     ports:
       - "5434:5432"
+    volumes:
+      - catalog_db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catalog_user -d catalogdb"]
       interval: 5s
@@ -114,9 +120,15 @@ services:
     environment:
       REDIS_URL: redis://whatsapp-redis:6379
       CATALOG_SERVICE_URL: http://catalog-api:8002
+      VENDOR_ID: 2a0e4d59-4452-4e8f-9770-4cbbf734487e
     depends_on:
       whatsapp-redis:
         condition: service_healthy
       catalog-api:
         condition: service_started
     restart: unless-stopped
+
+volumes:
+  redis_data:
+  vendor_db_data:
+  catalog_db_data:

@@ -42,7 +42,7 @@ async def test_get_cart_summary_aggregates_decimal_precision(sample_cart, mock_c
 async def test_session_lockout_intercepts_regular_keywords():
     """
     Ensures that when AWAITING_QUANTITY is active, a user typing "menu" 
-    does NOT trigger catalog extraction, but routes to quantity validation.
+    clears the session lock natively and invokes the catalog fallback.
     """
     mock_state = {
         "state": "AWAITING_QUANTITY",
@@ -50,11 +50,13 @@ async def test_session_lockout_intercepts_regular_keywords():
     }
     
     with patch("app.redis_listener.session_manager.get_state", return_value=mock_state):
-        with patch("app.redis_listener.cart_handlers.handle_quantity_input") as mock_qty:
-            with patch("app.redis_listener.catalog_client.fetch_menu") as mock_catalog:
-                
-                # Should NOT trigger mock_catalog despite keyword
-                await route_message("999", "menu")
-                
-                mock_qty.assert_called_once_with("999", "menu", {"product_id": "prod_1"})
-                mock_catalog.assert_not_called()
+        with patch("app.redis_listener.session_manager.clear_state") as mock_clear:
+            with patch("app.redis_listener.cart_handlers.handle_quantity_input") as mock_qty:
+                with patch("app.redis_listener.catalog_client.fetch_menu") as mock_catalog:
+                    
+                    # Should route to catalog seamlessly exiting quantity constraints
+                    await route_message("999", "menu")
+                    
+                    mock_qty.assert_not_called()
+                    mock_catalog.assert_called_once()
+                    mock_clear.assert_called_once_with("999")

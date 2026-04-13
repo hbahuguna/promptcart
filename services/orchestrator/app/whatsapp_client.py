@@ -118,6 +118,27 @@ async def send_interactive_buttons(to: str, header: str, body: str, buttons: lis
     
     return await _post_to_whatsapp(payload)
 
+async def send_location_request(to: str, body: str) -> bool:
+    """
+    Triggers native WhatsApp UI prompting the user to share GPS layout.
+    """
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "location_request_message",
+            "body": {
+                "text": body
+            },
+            "action": {
+                "name": "send_location"
+            }
+        }
+    }
+    return await _post_to_whatsapp(payload)
+
 async def _post_to_whatsapp(payload: dict) -> bool:
     """Internal helper to dispatch to Meta API."""
     logger.debug(f"Outbound WhatsApp payload: {payload}")

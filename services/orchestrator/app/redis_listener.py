@@ -121,8 +121,17 @@ async def route_message(sender: str, text: str):
         elif s_type == "AWAITING_ADDRESS_GPS":
             await whatsapp_client.send_text(sender, "⚠️ Please use the 'Send Location' button supplied in the previous message to share your GPS coordinates.")
             return
-        elif s_type == "AWAITING_ADDRESS_DETAILS":
-            await checkout_handlers.handle_address_details_input(sender, text, metadata)
+        elif s_type == "AWAITING_CUSTOMER_NAME":
+            await checkout_handlers.handle_wizard_name_input(sender, text, metadata)
+            return
+        elif s_type == "AWAITING_HOUSE_NUMBER":
+            await checkout_handlers.handle_wizard_house_input(sender, text, metadata)
+            return
+        elif s_type == "AWAITING_MOHALLA":
+            await checkout_handlers.handle_wizard_mohalla_input(sender, text, metadata)
+            return
+        elif s_type == "AWAITING_LANDMARK":
+            await checkout_handlers.handle_wizard_landmark_input(sender, text, metadata)
             return
     
     # 1. Active Routing
