@@ -8,7 +8,7 @@ PromptCart is an event-driven microservices platform that lets customers browse 
 
 | # | Service | Stack |
 |---|---------|-------|
-| 1 | **WhatsApp Gateway** ← *we are here* | Python / FastAPI / Redis |
+| 1 | **WhatsApp Gateway** | Python / FastAPI / Redis |
 | 2 | Conversation Orchestrator | Node.js / Go |
 | 3 | AI Sales Agent | Python / FastAPI |
 | 4 | Catalog Service | Go / Postgres |
