@@ -3,7 +3,8 @@ import json
 import asyncio
 import logging
 from redis import asyncio as aioredis
-from app import whatsapp_client, catalog_client
+from app import whatsapp_client, catalog_client, session_manager
+from app.handlers import cart_handlers, checkout_handlers
 from app.logger_utils import setup_logger, mask_phone
 
 logger = setup_logger("orchestrator_redis")
@@ -81,15 +82,45 @@ async def route_message(sender: str, text: str):
     """NLP and Routing hub."""
     text_lower = text.lower()
     
-    # 1. Determine Intent
+    # 0. Global Navigational Intent Determinations
+    # We map keywords BEFORE enforcing session lockouts, effectively allowing
+    # a user to escape a conversational loop if they type "menu" or "cart" halfway through checkout.
     wants_catalog = any(word in text_lower for word in KEYWORDS)
+    wants_cart = any(word in text_lower for word in {"cart", "basket", "view cart"})
+    wants_checkout = any(word in text_lower for word in {"checkout", "place order", "buy", "buy now"})
+    wants_cancel = "cancel" in text_lower
     
-    if wants_catalog:
+    state = await session_manager.get_state(sender)
+    
+    if state and (wants_catalog or wants_cart or wants_checkout or wants_cancel):
+        # The user typed a primary navigation keyword. Let them break out.
+        await session_manager.clear_state(sender)
+        state = {} # wipe local evaluation object
+        
+    if state:
+        s_type = state.get("state")
+        metadata = state.get("metadata", {})
+        if s_type == "AWAITING_QUANTITY":
+            await cart_handlers.handle_quantity_input(sender, text, metadata)
+            return
+        elif s_type == "AWAITING_ADDRESS":
+            await checkout_handlers.handle_address_input(sender, text)
+            return
+    
+    # 1. Active Routing
+    if wants_checkout:
+        logger.info("Intent: CHECKOUT (confidence: 1.0)")
+        await checkout_handlers.initiate_checkout(sender)
+    elif wants_cart:
+        logger.info("Intent: VIEW_CART (confidence: 1.0)")
+        await cart_handlers.handle_view_cart(sender)
+    elif wants_catalog:
         logger.info("Intent: CATALOG (confidence: 1.0)")
-        # Fetch up to 10 products due to Meta API constraints
         products = await catalog_client.fetch_menu(vendor_id=VENDOR_ID)
         await whatsapp_client.send_interactive_list(sender, products)
+    elif wants_cancel:
+        logger.info("Intent: CANCEL (confidence: 1.0)")
+        await whatsapp_client.send_text(sender, "Cancelled action. Type 'menu' whenever you are ready.")
     else:
         logger.info("Intent: UNKNOWN (confidence: 1.0)")
-        # Acknowledge gracefully instead of echoing raw text
         await whatsapp_client.send_text(sender, "I'm sorry, I don't understand that command. Type 'menu' or 'catalog' to browse our store!")

@@ -1,6 +1,7 @@
 import logging
 
 from app import whatsapp_client, catalog_client, cart_service
+from app.handlers import cart_handlers, checkout_handlers
 
 logger = logging.getLogger("orchestrator_handlers")
 
@@ -11,15 +12,42 @@ async def route_interactive(sender: str, interactive: dict):
     """
     i_type = interactive.get("type")
     
+    # User interacted naturally with buttons. Automatically wipe any stale session locks
+    from app import session_manager
+    await session_manager.clear_state(sender)
+    
     if i_type == "list_reply":
         item_id = interactive.get("list_reply", {}).get("id")
         if item_id:
-            await handle_product_selection(sender, item_id)
+            if str(item_id).startswith("edit_cart_"):
+                p_id = str(item_id).replace("edit_cart_", "")
+                await cart_handlers.handle_edit_cart_selection(sender, p_id)
+            else:
+                await handle_product_selection(sender, item_id)
             
     elif i_type == "button_reply":
         button_id = interactive.get("button_reply", {}).get("id")
         if button_id:
-            await handle_button_reply(sender, button_id)
+            if button_id == "manage_cart":
+                await cart_handlers.display_cart_item_options(sender)
+            elif button_id == "view_cart":
+                await cart_handlers.handle_view_cart(sender)
+            elif button_id == "checkout_initiate":
+                await checkout_handlers.initiate_checkout(sender)
+            elif str(button_id).startswith("update_qty:"):
+                p_id = str(button_id).split(":")[1]
+                await cart_handlers.handle_update_quantity_request(sender, p_id)
+            elif str(button_id).startswith("remove_item:"):
+                p_id = str(button_id).split(":")[1]
+                await cart_handlers.handle_remove_cart_item(sender, p_id)
+            elif button_id == "confirm_order":
+                await checkout_handlers.handle_order_confirmation(sender)
+            elif button_id == "change_address":
+                from app import session_manager
+                await session_manager.set_state(sender, "AWAITING_ADDRESS")
+                await whatsapp_client.send_text(sender, "📍 Please type your new full delivery address below:")
+            else:
+                await handle_button_reply(sender, button_id)
 
 async def handle_product_selection(sender: str, product_id: str):
     """
@@ -77,8 +105,19 @@ async def handle_add_to_cart(sender: str, product_id: str):
     await cart_service.add_to_cart(whatsapp_number=sender, product_id=product_id, qty=1)
     
     product_name = product.get("name", "Item")
-    success_msg = f"✅ Added *{product_name}* to your cart!\nType 'cart' to view or 'checkout' to place order."
-    await whatsapp_client.send_text(sender, success_msg)
+    
+    buttons = [
+        {"id": "view_cart", "title": "View Cart"},
+        {"id": "checkout_initiate", "title": "Checkout"},
+        {"id": "browse_catalog", "title": "Keep Shopping"}
+    ]
+    
+    await whatsapp_client.send_interactive_buttons(
+        to=sender,
+        header="Added!",
+        body=f"✅ Added *{product_name}* to your cart! What would you like to do next?",
+        buttons=buttons
+    )
 
 async def handle_browse_catalog(sender: str):
     """

@@ -47,3 +47,66 @@ async def clear_cart(whatsapp_number: str):
         logger.info(f"Cleared cart for {whatsapp_number}")
     except Exception as e:
         logger.error(f"Redis Clear Cart Error: {e}")
+
+async def remove_item(whatsapp_number: str, product_id: str):
+    """
+    Deletes a specific product code from the cart hash.
+    """
+    try:
+        cart_key = _get_cart_key(whatsapp_number)
+        await _redis_pool.hdel(cart_key, product_id)
+        logger.info(f"Removed item {product_id} from {whatsapp_number} cart")
+    except Exception as e:
+        logger.error(f"Failed to remove {product_id}: {e}")
+
+async def update_quantity(whatsapp_number: str, product_id: str, new_qty: int):
+    """
+    Overrides the quantity to an exact new integer.
+    """
+    try:
+        cart_key = _get_cart_key(whatsapp_number)
+        if new_qty <= 0:
+            await remove_item(whatsapp_number, product_id)
+        else:
+            await _redis_pool.hset(cart_key, product_id, new_qty)
+            logger.info(f"Set item {product_id} to quantity {new_qty} for {whatsapp_number}")
+    except Exception as e:
+        logger.error(f"Failed to update quantity to {new_qty}: {e}")
+
+async def get_cart_summary(whatsapp_number: str) -> dict:
+    """
+    Retrieves the raw cart, calls the Catalog via Network, and maps robust Decimal aggregates.
+    Returns: { "items": [{...}], "total_price": float }
+    """
+    from decimal import Decimal
+    from app import catalog_client
+    
+    raw_cart = await get_cart(whatsapp_number)
+    
+    items = []
+    total_price = Decimal("0.00")
+    
+    for product_id, raw_qty in raw_cart.items():
+        qty = int(raw_qty)
+        # Verify the product data against standard DB configurations via network REST lookup
+        product = await catalog_client.get_product_by_id(product_id)
+        
+        if not product:
+            continue
+            
+        unit_price = Decimal(str(product.get("price", "0.00")))
+        line_total = unit_price * qty
+        total_price += line_total
+        
+        items.append({
+            "product_id": product_id,
+            "name": product.get("name", "Unknown Item"),
+            "price": unit_price,
+            "quantity": qty,
+            "line_total": line_total
+        })
+        
+    return {
+        "items": items,
+        "total_price": total_price
+    }
