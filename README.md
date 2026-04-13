@@ -65,3 +65,31 @@ curl -X POST http://localhost:8000/webhook \
   -d '{"object":"whatsapp_business_account","entry":[]}'
 # → {"status":"received"}
 ```
+
+## Phase 2 — Vendor Management Service (Microservice 2/9)
+The Vendor Management Service provides the CRUD backbone for registering Dark Stores and Local Shopkeepers. It runs async SQLAlchemy via FastAPI on port 8001.
+
+```
+File Layout
+services/
+└── vendor-management/
+    ├── app/
+    │   ├── main.py          ← FastAPI init + lifecycle
+    │   ├── database.py      ← Async SQLAlchemy config
+    │   ├── models.py        ← DB declarative schema (UUID, Name, Type)
+    │   ├── schemas.py       ← Pydantic validatiors
+    │   └── routers/
+    │       └── vendors.py   ← Standard 5 CRUD endpoints
+    ├── test_vendor_api.py   ← 6 pytest workflows mocking SQLite async DB
+    ├── Dockerfile
+    ├── .env.example
+    ├── requirements.txt
+    └── docker-compose.yaml  ← api + postgres:15-alpine stack
+API Endpoints
+Method	Path	Purpose
+POST	/api/v1/vendors	Create Dark Store/Shopkeeper
+GET	/api/v1/vendors	List active vendors (Filters: ?type=)
+GET	/api/v1/vendors/{id}	Fetch highly specific vendor
+PATCH	/api/v1/vendors/{id}	Edit vendor data
+DELETE	/api/v1/vendors/{id}	Soft-delete vendor (is_active=False)
+```
