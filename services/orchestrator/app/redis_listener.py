@@ -61,6 +61,11 @@ async def process_webhook(payload: dict):
                         text = msg.get("text", {}).get("body", "").strip()
                         if sender and text:
                             await route_message(sender, text)
+                    elif msg.get("type") == "interactive":
+                        interactive_payload = msg.get("interactive", {})
+                        if sender and interactive_payload:
+                            from app.handlers import product_handlers
+                            await product_handlers.route_interactive(sender, interactive_payload)
     except Exception as e:
         logger.error(f"Error traversing webhook payload: {e}")
 

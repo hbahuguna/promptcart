@@ -80,6 +80,44 @@ async def send_interactive_list(to: str, products: list) -> bool:
     
     return await _post_to_whatsapp(payload)
 
+async def send_interactive_buttons(to: str, header: str, body: str, buttons: list[dict]) -> bool:
+    """
+    Sends Interactive Button message containing up to 3 buttons.
+    Each dictionary in `buttons` should have {"id": "str", "title": "str"}.
+    """
+    formatted_buttons = []
+    # Max 3 buttons per spec
+    for i, b in enumerate(buttons[:3]):
+        formatted_buttons.append({
+            "type": "reply",
+            "reply": {
+                "id": str(b["id"])[:200],  # Payload string limitation
+                "title": str(b["title"])[:20]  # UI character limits
+            }
+        })
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "header": {
+                "type": "text",
+                "text": header
+            },
+            "body": {
+                "text": body
+            },
+            "action": {
+                "buttons": formatted_buttons
+            }
+        }
+    }
+    
+    return await _post_to_whatsapp(payload)
+
 async def _post_to_whatsapp(payload: dict) -> bool:
     """Internal helper to dispatch to Meta API."""
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:

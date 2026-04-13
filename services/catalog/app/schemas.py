@@ -20,6 +20,7 @@ class ProductCreate(ProductBase):
 
 
 class ProductUpdate(BaseModel):
+    vendor_id: Optional[str] = Field(None, description="UUID of the Vendor")
     name: Optional[str] = Field(None, max_length=255)
     description: Optional[str] = None
     price: Optional[Decimal] = Field(None, decimal_places=2)
