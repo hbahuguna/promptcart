@@ -1,0 +1,32 @@
+services:
+  catalog-db:
+    image: postgres:15-alpine
+    container_name: promptcart-catalog-db
+    environment:
+      POSTGRES_DB: catalogdb
+      POSTGRES_USER: catalog_user
+      POSTGRES_PASSWORD: catalog_pass
+    ports:
+      # Map to host 5434 to avoid colliding with Vendor Management and existing services
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog_user -d catalogdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: promptcart-catalog-api
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://catalog_user:catalog_pass@catalog-db:5432/catalogdb
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    restart: unless-stopped
