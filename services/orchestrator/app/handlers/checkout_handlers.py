@@ -77,24 +77,26 @@ async def handle_wizard_landmark_input(sender: str, text: str, metadata: dict):
 
 async def handle_order_confirmation(sender: str):
     """
-    Stubs the order placed Redis Pub/Sub integration required for Phase 5.
+    Executes actual DB payload using Phase 6 order-api client.
     """
     import os
-    import json
-    from app.cart_service import _redis_pool
+    from app import order_client
     
     summary = await cart_service.get_cart_summary(sender)
     customer = await customer_client.get_customer(sender)
     
-    order_payload = {
-        "whatsapp_number": sender,
-        "items": summary["items"],
-        "total_amount": float(summary["total_price"]),
-        "address": customer.get("address", "UNKNOWN")
-    }
-    
-    # Broadcast to Phase 5 system pipeline
-    await _redis_pool.publish("order_placed", json.dumps(order_payload))
-    await cart_service.clear_cart(sender)
-    
-    await whatsapp_client.send_text(sender, "🎉 *Order placed!* Your order `#ORD-12345` is being processed. We'll notify you when it's packed and on the way.")
+    try:
+        order_response = await order_client.create_order(
+            whatsapp_number=sender,
+            vendor_id=os.environ.get("VENDOR_ID", "2a0e4d59-4452-4e8f-9770-4cbbf734487e"),
+            items=summary["items"],
+            delivery_address=customer.get("address", "UNKNOWN"),
+            total_amount=summary["total_price"]
+        )
+        order_id = order_response.get("id", "UNKNOWN")
+        
+        await cart_service.clear_cart(sender)
+        await whatsapp_client.send_text(sender, f"🎉 Order #ORD-{str(order_id)[:8].upper()} placed! We're preparing your items. Track your order here: https://promptcart.com/track/{order_id}")
+    except Exception as e:
+        logger.error(f"Failed to create order locally: {e}")
+        await whatsapp_client.send_text(sender, "⚠️ Something went wrong communicating with our checkout system. Please try again.")

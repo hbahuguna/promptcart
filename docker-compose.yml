@@ -128,7 +128,64 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ==========================================
+  # Microservice 5: Order Service
+  # ==========================================
+  order-db:
+    image: postgres:15-alpine
+    container_name: promptcart-order-db
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: order_user
+      POSTGRES_PASSWORD: order_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_user -d order_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  order-api:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: promptcart-order-api
+    ports:
+      - "8004:8004"
+    env_file:
+      - ./services/order-service/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://order_user:order_pass@order-db:5432/order_db
+      REDIS_URL: redis://whatsapp-redis:6379
+    depends_on:
+      order-db:
+        condition: service_healthy
+      whatsapp-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # Microservice 6: Fulfillment Loop
+  # ==========================================
+  fulfillment-service:
+    build:
+      context: ./services/fulfillment-service
+      dockerfile: Dockerfile
+    container_name: promptcart-fulfillment
+    env_file:
+      - ./services/fulfillment-service/.env
+    environment:
+      REDIS_URL: redis://whatsapp-redis:6379
+    depends_on:
+      whatsapp-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   redis_data:
   vendor_db_data:
   catalog_db_data:
+  order_db_data:
